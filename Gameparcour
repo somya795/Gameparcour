@@ -1,0 +1,198 @@
+import pygame
+import random
+import sys
+
+# Initialize pygame
+pygame.init()
+
+# Screen settings
+WIDTH, HEIGHT = 800, 400
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Parkour Game with Missiles, Dinosaurs, and UFOs")
+
+clock = pygame.time.Clock()
+font = pygame.font.SysFont(None, 36)
+
+# Colors
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+
+# Player settings
+player_size = 50
+player_x = 50
+player_y = HEIGHT - player_size - 50
+player_vel_y = 0
+gravity = 1
+jump_power = -15
+on_ground = True
+
+# Game variables
+level = 1
+max_level = 99
+game_over = False
+
+# Missiles settings
+missile_width = 40
+missile_height = 10
+missiles = []
+
+# Dinosaurs settings
+dino_size = 60
+dinosaurs = []
+
+# UFO settings
+ufo_size = 40
+ufos = []
+
+# Load sounds
+try:
+    jump_sound = pygame.mixer.Sound("jump.wav")
+    game_over_sound = pygame.mixer.Sound("game_over.wav")
+    pygame.mixer.music.load("background.mp3")
+    pygame.mixer.music.set_volume(0.3)
+    pygame.mixer.music.play(-1)  # loop music
+except Exception as e:
+    print("Warning: Could not load sound files. Make sure jump.wav, game_over.wav, background.mp3 are in the folder.")
+    jump_sound = None
+    game_over_sound = None
+
+# Speeds increase with level
+def get_speed(level):
+    return 5 + level * 0.1
+
+# Spawn missiles, dinosaurs, and UFOs depending on level
+def spawn_obstacles(level):
+    missiles.clear()
+    dinosaurs.clear()
+    ufos.clear()
+
+    if level < 99:
+        # Regular obstacles
+        num_missiles = min(3 + level // 10, 10)
+        num_dinos = min(1 + level // 20, 5)
+        for _ in range(num_missiles):
+            x = random.randint(WIDTH, WIDTH + 800)
+            y = HEIGHT - 50 - missile_height
+            missiles.append(pygame.Rect(x, y, missile_width, missile_height))
+        for _ in range(num_dinos):
+            x = random.randint(WIDTH, WIDTH + 800)
+            y = HEIGHT - 50 - dino_size
+            dinosaurs.append(pygame.Rect(x, y, dino_size, dino_size))
+    else:
+        # Level 99: Spawn missiles and mix of dinos or UFOs
+        num_missiles = 10
+        num_obs = 8  # total dinos + ufos
+        for _ in range(num_missiles):
+            x = random.randint(WIDTH, WIDTH + 800)
+            y = HEIGHT - 50 - missile_height
+            missiles.append(pygame.Rect(x, y, missile_width, missile_height))
+        for _ in range(num_obs):
+            x = random.randint(WIDTH, WIDTH + 800)
+            if random.choice([True, False]):
+                y = HEIGHT - 50 - dino_size
+                dinosaurs.append(pygame.Rect(x, y, dino_size, dino_size))
+            else:
+                y = random.randint(HEIGHT - 200, HEIGHT - 100)  # UFO flies higher
+                ufos.append(pygame.Rect(x, y, ufo_size, ufo_size))
+
+# Player rect for collision
+def player_rect():
+    return pygame.Rect(player_x, player_y, player_size, player_size)
+
+def reset_game():
+    global player_y, player_vel_y, on_ground, missiles, dinosaurs, ufos, level, game_over
+    player_y = HEIGHT - player_size - 50
+    player_vel_y = 0
+    on_ground = True
+    level = 1
+    spawn_obstacles(level)
+    game_over = False
+
+spawn_obstacles(level)
+
+while True:
+    screen.fill(WHITE)
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
+        if not game_over and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE and on_ground:
+                player_vel_y = jump_power
+                on_ground = False
+                if jump_sound:
+                    jump_sound.play()
+        if game_over and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_r:
+                reset_game()
+
+    if not game_over:
+        # Update player position
+        player_vel_y += gravity
+        player_y += player_vel_y
+        if player_y >= HEIGHT - player_size - 50:
+            player_y = HEIGHT - player_size - 50
+            player_vel_y = 0
+            on_ground = True
+
+        # Move missiles, dinos, UFOs left
+        speed = get_speed(level)
+        for missile in missiles:
+            missile.x -= speed
+        for dino in dinosaurs:
+            dino.x -= speed * 0.8
+        for ufo in ufos:
+            ufo.x -= speed * 1.2  # UFOs move faster
+
+        # Remove obstacles that went off screen and spawn new ones
+        if all(missile.right < 0 for missile in missiles):
+            level += 1
+            if level > max_level:
+                level = max_level
+            spawn_obstacles(level)
+
+        # Draw player
+        pygame.draw.rect(screen, (0, 128, 255), player_rect())
+
+        # Draw missiles (red)
+        for missile in missiles:
+            pygame.draw.rect(screen, (255, 0, 0), missile)
+
+        # Draw dinosaurs (green)
+        for dino in dinosaurs:
+            pygame.draw.rect(screen, (0, 150, 0), dino)
+
+        # Draw UFOs (purple)
+        for ufo in ufos:
+            pygame.draw.rect(screen, (150, 0, 150), ufo)
+
+        # Collision detection
+        player_box = player_rect()
+        for missile in missiles:
+            if player_box.colliderect(missile):
+                if not game_over and game_over_sound:
+                    game_over_sound.play()
+                game_over = True
+        for dino in dinosaurs:
+            if player_box.colliderect(dino):
+                if not game_over and game_over_sound:
+                    game_over_sound.play()
+                game_over = True
+        for ufo in ufos:
+            if player_box.colliderect(ufo):
+                if not game_over and game_over_sound:
+                    game_over_sound.play()
+                game_over = True
+
+        # Display level
+        level_text = font.render(f"Level: {level}/99", True, BLACK)
+        screen.blit(level_text, (10, 10))
+
+    else:
+        # Game over screen
+        over_text = font.render("Game Over! Press R to Restart", True, (200, 0, 0))
+        screen.blit(over_text, (WIDTH // 2 - over_text.get_width() // 2, HEIGHT // 2))
+
+    pygame.display.flip()
+    clock.tick(60
